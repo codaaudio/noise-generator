@@ -23,23 +23,34 @@ def db_to_crest_factor(dB):
     """Convert decibels to crest factor."""
     return 10 ** (dB / 20)
 
-def generate_pink_amplitudes(freqs, normalization_freq=1000.0):
+def generate_pink_amplitudes(freqs, lf_cutoff = 10, normalization_freq=1000.0):
     # Pink noise has 1/f power spectral density, normalize to 1 at 1kHz
     # Therefore we need 1/sqrt(f) amplitude spectral density, because
     # psd = asd^2, so if psd ~ 1/f, then asd ~ 1/sqrt(f)
     # DC is always 0
-    return np.concatenate([[0.0], np.sqrt(normalization_freq) / np.sqrt(np.abs(freqs[1:]))])
 
-def generate_white_amplitudes(freqs):
+    # Generate the amplitudes, prevent divison by zero at DC
+    ampls = np.concatenate([[0.0], np.sqrt(normalization_freq) / np.sqrt(np.abs(freqs[1:]))])
+
+    # Set values below lf_cutoff to 0
+    return np.where(freqs < lf_cutoff, np.zeros(len(ampls)), ampls)
+
+def generate_white_amplitudes(freqs, lf_cutoff = 10):
     # White noise has flat amplitude spectral density and power spectral density
-    return np.concatenate([[0.0], np.ones(len(freqs) - 1)])
+    ampls = np.concatenate([[0.0], np.ones(len(freqs) - 1)])
 
-def generate_brown_amplitudes(freqs):
+    # Set values below lf_cutoff to 0
+    return np.where(freqs < lf_cutoff, np.zeros(len(ampls)), ampls)
+
+def generate_brown_amplitudes(freqs, lf_cutoff = 10, normalization_freq=1000.0):
     # Brown noise has 1/f^2 power spectral density, therefore 1/f amplitude spectral density
     # Normalize to 1 at 1kHz
-    return np.concatenate([[0.0], np.sqrt(1000.0) / np.abs(freqs[1:])])
+    ampls = np.concatenate([[0.0], np.sqrt(normalization_freq) / np.abs(freqs[1:])])
 
-def generate_speech_amplitudes(freqs):
+    # Set values below lf_cutoff to 0
+    return np.where(freqs < lf_cutoff, np.zeros(len(ampls)), ampls)
+
+def generate_speech_amplitudes(freqs, lf_cutoff = 10):
 
     # Second order high-pass filter
     # resonant frequency fh= 142 Hz Q = 0.58
@@ -83,15 +94,18 @@ def generate_speech_amplitudes(freqs):
     # Combine by multiplying transfer functions
     h_combined = h1 * h2 * h3 * h4 * h5
 
-    return np.abs(h_combined)
+    ampls = np.abs(h_combined)
 
-def generate_pink_a_weighted(freqs):
+    return np.where(freqs < lf_cutoff, np.zeros(len(ampls)), ampls)
+
+
+def generate_pink_a_weighted(freqs, lf_cutoff = 10):
     a_weighting_fun = lambda f: (12194**2 * f**4) / ((f**2 + 20.6**2) * np.sqrt((f**2 + 107.7**2) * (f**2 + 737.9**2)) * (f**2 + 12194**2))
 
     pink_amplitudes = generate_pink_amplitudes(freqs)
-    a_weighted_amplitudes = pink_amplitudes * a_weighting_fun(freqs)
+    ampls = pink_amplitudes * a_weighting_fun(freqs)
 
-    return a_weighted_amplitudes
+    return np.where(freqs < lf_cutoff, np.zeros(len(ampls)), ampls)
 
 def generate_amplitudes_like(freqs, source_wav):
     """Generate amplitudes for a noise signal based on the spectrum of a source WAV file."""
