@@ -198,7 +198,7 @@ def calculate_crest_factor(signal_data):
     return crest_factor_db
 
 
-def plot_crest_factors(center_frequencies, crest_factors, broadband_cf, input_file, fraction):
+def plot_crest_factors(center_frequencies, crest_factors, broadband_cf, input_file, fraction, filter_type):
     """
     Create a bar plot of the frequency-dependent crest factors.
     
@@ -237,7 +237,7 @@ def plot_crest_factors(center_frequencies, crest_factors, broadband_cf, input_fi
     # Formatting
     plt.xlabel('Center Frequency (Hz)')
     plt.ylabel('Crest Factor (dB)')
-    plt.title(f'Frequency-Dependent Crest Factor\n{input_file} (1/{fraction} octave bands)', 
+    plt.title(f'Frequency-Dependent Crest Factor\n1/{fraction} octave bands, {'IIR' if filter_type == 'iir' else 'FIR'} Filters\n{input_file}', 
               fontsize=14, pad=20)
     plt.grid(True, alpha=0.3, axis='y')
     plt.legend(loc='upper right')
@@ -316,7 +316,7 @@ def main():
     # Generate plot if requested
     if args.plot:
         plot_crest_factors(center_frequencies, crest_factors, broadband_cf, 
-                          args.input_file, args.fraction)
+                          args.input_file, args.fraction, args.filter_type)
     
     return 0
 
