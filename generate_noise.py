@@ -8,6 +8,7 @@ import soxr
 from scipy.io import wavfile
 import argparse
 from scipy.interpolate import CubicSpline
+from scipy.stats import norm
 
 def crest_factor(signal):
     """Calculate the crest factor of a signal."""
@@ -97,7 +98,6 @@ def generate_speech_amplitudes(freqs, lf_cutoff = 10):
     ampls = np.abs(h_combined)
 
     return np.where(freqs < lf_cutoff, np.zeros(len(ampls)), ampls)
-
 
 def generate_pink_a_weighted(freqs, lf_cutoff = 10):
     a_weighting_fun = lambda f: (12194**2 * f**4) / ((f**2 + 20.6**2) * np.sqrt((f**2 + 107.7**2) * (f**2 + 737.9**2)) * (f**2 + 12194**2))
@@ -218,6 +218,14 @@ def optimize_noise(
     
     return amplitudes, final_phases
 
+friendly_noise_names = {
+    'pink': 'Periodic Pink Noise',
+    'white': 'Periodic White Noise',
+    'brown': 'Periodic Brown Noise',
+    'speech': 'Periodic IEC60268-16:2020 Speech shaped noise',
+    'pink_a_weighted': 'Periodic A-weighted Pink Noise',
+    'external': 'Periodic External Noise'
+}
 
 # Example usage
 if __name__ == "__main__":
@@ -242,7 +250,7 @@ if __name__ == "__main__":
     
     target_noise_type = args.noise_type
 
-    print(f"Generating {target_noise_type} noise...")
+    print(f"Generating {friendly_noise_names[args.noise_type]}...")
     print(f"Target crest factor: {target_crest_factor_dB}dB")
     
     # Generate optimized noise
@@ -322,7 +330,7 @@ if __name__ == "__main__":
     plt.subplot(2, 1, 1)
     time_axis = np.arange(num_upsampled_samples) / target_sample_rate
     plt.plot(time_axis, upsampled_signal)
-    plt.title(f'{target_noise_type} Noise Time Domain (CF = {upsampled_cf_dB:.2f} dB)')
+    plt.title(f'{friendly_noise_names[args.noise_type]} Time Domain (CF = {upsampled_cf_dB:.2f} dB)')
     plt.xlabel('Time (s)')
     plt.ylabel('Amplitude')
     plt.grid(True)
@@ -352,5 +360,29 @@ if __name__ == "__main__":
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
 
     plt.title('Frequency Domain')
+    plt.tight_layout()
+
+    # Plot histogram of the upsampled signal
+    plt.figure(figsize=(10, 6))
+    n, bins, patches = plt.hist(upsampled_signal, bins=100, density=True, alpha=0.7, color='green', edgecolor='black')
+    plt.title(f'{friendly_noise_names[args.noise_type]} Amplitude Distribution (CF = {upsampled_cf_dB:.2f} dB)')
+    plt.xlabel('Amplitude')
+    plt.ylabel('Probability Density')
+    plt.grid(True, alpha=0.3)
+    
+    # Add some statistics to the plot
+    mean_val = np.mean(upsampled_signal)
+    std_val = np.std(upsampled_signal)
+    plt.axvline(mean_val, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_val:.4f}')
+    plt.axvline(mean_val + std_val, color='orange', linestyle='--', linewidth=1, label=f'+1σ: {mean_val + std_val:.4f}')
+    plt.axvline(mean_val - std_val, color='orange', linestyle='--', linewidth=1, label=f'-1σ: {mean_val - std_val:.4f}')
+    
+    # Fit and overlay Gaussian distribution
+    mu, sigma = norm.fit(upsampled_signal)
+    x = np.linspace(upsampled_signal.min(), upsampled_signal.max(), 1000)
+    gaussian_fit = norm.pdf(x, mu, sigma)
+    plt.plot(x, gaussian_fit, 'r-', linewidth=2, label=f'Gaussian Fit (μ={mu:.4f}, σ={sigma:.4f})')
+    
+    plt.legend()
     plt.tight_layout()
     plt.show()
