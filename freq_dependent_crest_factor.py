@@ -166,7 +166,7 @@ def filter_signal(signal_data, f_center, fraction, fs, filter_type):
         filtered = signal.sosfilt(sos_filter, prepended_signal)
     else:  # fir
         coeffs = design_fractional_octave_fir_filter(f_center, fraction, fs)
-        filtered = signal.lfilter(coeffs, 1, prepended_signal)
+        filtered = signal.convolve(prepended_signal, coeffs)
 
     # Return only the second half (original signal length)
     return filtered[len(signal_data):]
