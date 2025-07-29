@@ -147,30 +147,61 @@ def design_fractional_octave_butterworth_filter(f_center, fraction, fs):
     sos = signal.butter(6, [low, high], btype='band', fs=fs, output='sos')
     return sos
 
-
-def design_fractional_octave_fir_filter(f_center, fraction, fs):
+def design_fractional_octave_fir_filter(f_center, fraction, fs, filter_length=65536):
     low, high = get_fractional_octave_edges(f_center, fraction)
     
-    h = signal.firwin(512, [low, high], pass_zero=False, fs=fs)
-    return h
+    #print(f"Designing FIR filter for center frequency {f_center} Hz, edges {low:.2f} Hz - {high:.2f} Hz")
+    coeffs = signal.firwin(filter_length, [low, high], pass_zero=False, fs=fs)    
 
+    return coeffs
 
+def filter_signal_fir(signal_data, center_frequencies, fraction, fs, filter_length):
 
-def filter_signal(signal_data, f_center, fraction, fs, filter_type):
+ 
+    fft_len = len(signal_data)
+    num_pad = 1
+
+    if filter_length > fft_len:
+        num_pad = int(np.ceil(filter_length / len(signal_data)))
+        fft_len = int(len(signal_data)) * num_pad
     
-    # Prepend signal to handle filter transients
-    prepended_signal = np.concatenate([signal_data, signal_data])
+    prepended_signal = np.concatenate([signal_data] * num_pad)
     
-    if filter_type == 'iir':
-        sos_filter = design_fractional_octave_butterworth_filter(f_center, fraction, fs)
-        filtered = signal.sosfilt(sos_filter, prepended_signal)
-    else:  # fir
-        coeffs = design_fractional_octave_fir_filter(f_center, fraction, fs)
-        filtered = signal.convolve(prepended_signal, coeffs)
+    print(f"Using FFT length: {fft_len} (original signal length: {len(signal_data)}, filter length: {filter_length})")
 
-    # Return only the second half (original signal length)
-    return filtered[len(signal_data):]
+    signal_spectrum = np.fft.rfft(prepended_signal)
 
+    filters = []
+    filtered_signals = []
+
+    for fc in center_frequencies:
+        coeffs = design_fractional_octave_fir_filter(fc, fraction, fs, filter_length)
+
+        filters.append(coeffs)
+
+        # use built-in n=len feature to zero-pad the filter coefficients
+        filter_spectrum = np.fft.rfft(coeffs, n=fft_len)
+
+        # Use FFT based filtering to get a periodic convolution
+        filtered_signal = np.fft.irfft(signal_spectrum * filter_spectrum)
+
+        filtered_signals.append(filtered_signal)
+
+    return filtered_signals, filters
+
+def filter_signal_iir(signal_data, center_frequencies, fraction, fs):
+    filtered_signals = []
+    filters = []
+    
+    for fc in center_frequencies:
+        sos = design_fractional_octave_butterworth_filter(fc, fraction, fs)
+        filters.append(sos)
+
+        #TODO: Padding?
+        filtered_signal = signal.sosfilt(sos, signal_data)
+        filtered_signals.append(filtered_signal)
+
+    return filtered_signals, filters
 
 def calculate_crest_factor(signal_data):
     """
@@ -198,7 +229,17 @@ def calculate_crest_factor(signal_data):
     return crest_factor_db
 
 
-def plot_crest_factors(center_frequencies, crest_factors, broadband_cf, input_file, fraction, filter_type):
+def plot_crest_factors(
+        fs,
+        center_frequencies,
+        crest_factors,
+        broadband_cf,
+        input_file,
+        fraction,
+        filter_type,
+        final_signal=None,
+        filters=None
+    ):
     """
     Create a bar plot of the frequency-dependent crest factors.
     
@@ -248,6 +289,83 @@ def plot_crest_factors(center_frequencies, crest_factors, broadband_cf, input_fi
     plt.ylim(y_min, y_max)
     
     plt.tight_layout()
+
+    if final_signal is not None:
+        nSamples = len(final_signal)
+        spectrum = np.fft.rfft(final_signal)
+        freqs = np.fft.rfftfreq(nSamples, d=1/fs)
+
+        amplitudes = np.abs(spectrum)
+        final_phases = np.angle(spectrum)
+
+        # Time domain plot
+        plt.figure(figsize=(12, 8))
+        plt.subplot(2, 1, 1)
+        time_axis = np.arange(nSamples) / fs
+        plt.plot(time_axis, final_signal)
+        plt.title(f'Time Domain (CF = {broadband_cf:.2f} dB)')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Amplitude')
+        plt.grid(True)
+
+        # Frequency domain plot with magnitude and phase
+        plt.subplot(2, 1, 2)
+        # We'll use twinx to have two y-axes
+        ax1 = plt.gca()
+        ax2 = ax1.twinx()
+
+        # Plot magnitude on left axis
+        ax1.semilogx(freqs[1:], 20 * np.log10(amplitudes[1:]), 'b-', label='Magnitude')
+        ax1.set_xlabel('Frequency (Hz)')
+        ax1.set_ylabel('Magnitude (dB)', color='b')
+        ax1.tick_params(axis='y', labelcolor='b')
+        ax1.grid(True)
+        ax1.set_xlim([20, fs/2])
+
+        # Plot phase on right axis
+        ax2.semilogx(freqs[1:], np.unwrap(final_phases[1:]), 'r-', alpha=0.6, label='Phase')
+        ax2.set_ylabel('Phase (rad)', color='r')
+        ax2.tick_params(axis='y', labelcolor='r')
+
+        # Add legend
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+
+        plt.title('Frequency Domain')
+        plt.tight_layout()
+
+    if filters is not None:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8))
+
+        num_filter_plot_freqs = 131072
+
+        for filter in filters:
+            if filter_type == 'iir':
+                sos = filter
+                w, h = signal.sosfreqz(sos, worN=num_filter_plot_freqs, fs=fs)
+            else:
+                h = filter
+                w, h = signal.freqz(h, worN=num_filter_plot_freqs, fs=fs)
+
+            ax1.semilogx(w, 20 * np.log10(np.abs(h)), label='Filter')
+            ax2.semilogx(w, np.unwrap(np.angle(h)), label='Filter')
+
+        ax1.set_xlim(20, 20000)
+        ax1.set_ylim(-60, 5)
+        ax1.set_xlabel('Frequency (Hz)')
+        ax1.set_ylabel('Magnitude (dB)')
+        ax1.set_title(f'Frequency Response of {filter_type.upper()} Filters\n1/{fraction} Octave Bands', fontsize=14, pad=20)
+        ax1.grid(True, which='both', linestyle='--', alpha=0.5)
+
+        ax2.set_xlim(20, 20000)
+        ax2.set_xlabel('Frequency (Hz)')
+        ax2.set_ylabel('Phase (radians)')
+        ax2.set_title('Phase Response', fontsize=14, pad=20)
+        ax2.grid(True, which='both', linestyle='--', alpha=0.5)
+        #plt.legend(title='Center Frequencies', loc='upper right')
+        plt.tight_layout()
+
     plt.show()
 
 
@@ -280,33 +398,40 @@ def main():
     
     # Get center frequencies for the specified fractional octave
     center_frequencies = get_fractional_octave_center_frequencies(args.fraction)
-    
+
+    print(f"Filtering signal in {len(center_frequencies)} bands using {'FIR' if args.filter_type == 'fir' else 'IIR'} filters... ", end='', flush=True)
+    if args.filter_type == 'fir':
+        # Use FIR filters
+        filtered_signals, filters = filter_signal_fir(signal_data, center_frequencies, args.fraction, fs, 65536)
+    else:
+        # Use IIR filters
+        filtered_signals, filters = filter_signal_iir(signal_data, center_frequencies, args.fraction, fs)
+    print("Done!")
+
+    print("Calculating crest factors... ", end='', flush=True)
+
+    broadband_cf = calculate_crest_factor(signal_data)
+    crest_factors_db = []
+    for signal in filtered_signals:
+        # Calculate crest factor for the filtered signal
+        crest_factor_db = calculate_crest_factor(signal)
+        crest_factors_db.append(crest_factor_db)
+
+    print("Done!")
+
     print(f"\nFrequency-Dependent Crest Factor Analysis")
     print(f"=========================================")
     print(f"File: {args.input_file}")
     print(f"Sample rate: {fs} Hz")
-    print(f"Duration: {len(signal_data)/fs:.2f} seconds")
+    print(f"Duration: {len(signal_data)/fs:.2f} seconds ({len(signal_data):,} samples)")
     print(f"Filter type: {args.filter_type}")
     print(f"Fractional octave: 1/{args.fraction}")
     print(f"\nResults:")
     print(f"{'Center Freq (Hz)':>15} | {'Crest Factor (dB)':>17}")
     print("-" * 70)
     
-    # Store results for plotting
-    crest_factors = []
-    
-    # Process each frequency band
-    for fc in center_frequencies:
-        
-        # Apply filter
-        filtered_signal = filter_signal(signal_data, fc, args.fraction, fs, args.filter_type)
-        
-        # Calculate crest factor
-        crest_factor_db = calculate_crest_factor(filtered_signal)
-        crest_factors.append(crest_factor_db)
-        
-        print(f"{fc:>15.1f} | {crest_factor_db:>17.2f}dB")
-            
+    for i, signal in enumerate(filtered_signals):
+        print(f"{center_frequencies[i]:>15.1f} | {crest_factors_db[i]:>17.3f}dB")
 
     # Calculate broadband crest factor
     print("-" * 70)
@@ -315,8 +440,8 @@ def main():
     
     # Generate plot if requested
     if args.plot:
-        plot_crest_factors(center_frequencies, crest_factors, broadband_cf, 
-                          args.input_file, args.fraction, args.filter_type)
+        plot_crest_factors(fs, center_frequencies, crest_factors_db, broadband_cf,
+                          args.input_file, args.fraction, args.filter_type, signal_data, filters)
     
     return 0
 
