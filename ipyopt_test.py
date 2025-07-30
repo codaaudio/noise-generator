@@ -2,16 +2,17 @@
 
 """Example for optimizing scipy.optimize.rosen."""
 
+import sys
 import numpy as np
 import jax
 import jax.numpy as jnp
 import ipyopt
-from jax.test_util import check_grads
-import scipy.optimize
 from functools import partial
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
 from scipy.stats import norm
+
+from freq_dependent_crest_factor import get_fractional_octave_center_frequencies, design_fractional_octave_fir_filter
 
 def generate_pink_amplitudes(freqs, lf_cutoff = 10, hf_cutoff = 22400, normalization_freq=1000.0):
     # Pink noise has 1/f power spectral density, normalize to 1 at 1kHz
@@ -49,6 +50,34 @@ def noise_signal_obj(phases, amplitudes, target_crest):
 
     return curr_obj_fun
 
+@jax.jit
+def crest_factor_mtx(signal_mtx):
+    # Signals are in each row
+    peak = jnp.max(jnp.abs(signal_mtx), axis=1)
+    rms = jnp.sqrt(jnp.mean(signal_mtx**2, axis=1))
+
+    return jnp.where(rms <= 0.0, jnp.inf, peak / rms)
+
+def noise_signal_obj_filter(phases, amplitudes, filters, target_crests, target_crest_weightings):
+    spectrum_row = amplitudes * jnp.exp(1j * phases)
+
+    # spectrum is in each row
+    spectrum_matrix = jnp.tile(spectrum_row, (filters.shape[0], 1))
+
+    # apply the filters, arranged as matrix
+    spectrum_matrix = jnp.multiply(spectrum_matrix, filters)
+
+    # perform inverse FFT along the rows
+    # each row is a signal
+    signal_matrix = jnp.fft.irfft(spectrum_matrix, axis=1)
+
+    crest_factors = crest_factor_mtx(signal_matrix)
+
+    crest_factors_dB = crest_factor_to_dB(crest_factors)
+
+    curr_obj_fun = jnp.mean(jnp.abs(crest_factors_dB - target_crests) * target_crest_weightings)
+
+    return curr_obj_fun
 
 def eval_g(_x, _out):
     return
@@ -68,7 +97,7 @@ def main():
     sample_rate = 96000
     nSamples = 65536*2*2*2*2
 
-    print(f"{nSamples / sample_rate} seconds")
+    #print(f"{nSamples / sample_rate} seconds")
 
     target_crest = 12
 
@@ -76,8 +105,9 @@ def main():
     num_freqs = len(freqs)
     #print(freqs)
 
-    print(f"delta f: {freqs[1] - freqs[0]}Hz")
-    
+    #print(f"delta f: {freqs[1] - freqs[0]}Hz")
+
+    #sys.stdout.flush()  
 
     amplitudes = generate_pink_amplitudes(freqs)
     #print(amplitudes)
@@ -85,8 +115,71 @@ def main():
     rng = np.random.default_rng(12345)
     base_phases = rng.uniform(-np.pi, np.pi, num_freqs)
 
-    opt_fun_jit = jax.jit(partial(noise_signal_obj, amplitudes=amplitudes, target_crest=target_crest))
-    opt_grad_fun_jit = jax.grad(opt_fun_jit)
+    octave_freqs = get_fractional_octave_center_frequencies(1)
+    num_octave_freqs = len(octave_freqs)
+
+    third_octave_freqs = get_fractional_octave_center_frequencies(3)
+    num_third_octave_freqs = len(third_octave_freqs)
+
+    tf_oct_freqs = get_fractional_octave_center_frequencies(24)
+    num_tf_oct_freqs = len(tf_oct_freqs)
+
+    num_filters = 1 + num_octave_freqs + num_third_octave_freqs + num_tf_oct_freqs
+
+    filters = np.zeros((num_filters, num_freqs), dtype=np.complex64)
+
+    print(f"Building {num_filters} filters...", end=' ', flush=True)
+    filters[0] = np.ones(num_freqs, dtype=np.complex64)  # Base filter (no filtering)
+    curr_filter_index = 1
+    for fc in octave_freqs:
+        curr_filter_taps = design_fractional_octave_fir_filter(
+            f_center=fc,
+            fraction=1,
+            fs=sample_rate
+        )
+        curr_filter_response = np.fft.rfft(curr_filter_taps, nSamples)
+        filters[curr_filter_index] = curr_filter_response
+        curr_filter_index += 1
+    
+    for fc in third_octave_freqs:
+        curr_filter_taps = design_fractional_octave_fir_filter(
+            f_center=fc,
+            fraction=3,
+            fs=sample_rate
+        )
+        curr_filter_response = np.fft.rfft(curr_filter_taps, nSamples)
+        filters[curr_filter_index] = curr_filter_response
+        curr_filter_index += 1
+
+    for fc in tf_oct_freqs:
+        curr_filter_taps = design_fractional_octave_fir_filter(
+            f_center=fc,
+            fraction=24,
+            fs=sample_rate
+        )
+        curr_filter_response = np.fft.rfft(curr_filter_taps, nSamples)
+        filters[curr_filter_index] = curr_filter_response
+        curr_filter_index += 1
+    
+    print("Done.", flush=True)
+
+    #num_filters = 2  # Number of filters to apply
+    #filters = np.ones((num_filters, num_freqs), dtype=np.float32)
+    target_crests = np.full((num_filters,), target_crest, dtype=np.float32)
+
+    target_crest_weightings = np.ones((num_filters,), dtype=np.float32)
+    target_crest_weightings[0] = 20.0
+    #target_crest_weightings /= np.max(target_crest_weightings)
+    
+    #opt_fun_jit = jax.jit(partial(noise_signal_obj, amplitudes=amplitudes, target_crest=target_crest))
+    opt_fun_jit = jax.jit(partial(
+        noise_signal_obj_filter,
+        amplitudes=amplitudes,
+        filters=filters,
+        target_crests=target_crests,
+        target_crest_weightings=target_crest_weightings
+    ))
+    opt_grad_fun_jit = jax.jit(jax.grad(opt_fun_jit))
 
     opt_fun = lambda phases: opt_fun_jit(phases)
     opt_grad_fun = lambda phases: opt_grad_fun_jit(phases)
@@ -128,10 +221,17 @@ def main():
         #print(f"Intermediate callback: iter={iter}, mode={mode}, obj_value={obj_value}, inf_pr={inf_pr}, inf_du={inf_du}, mu={mu}, d_norm={d_norm}, regularization_size={regularization_size}, alpha_du={alpha_du}, alpha_pr={alpha_pr}, ls_trials={ls_trials}")
 
         # Terminate, 0.0001dB is good enough.
-        if obj_value < 0.0001:
+        if obj_value < 1e-03:
             return False
 
         return True
+
+    print("Starting optimization:")
+    print(f"Sample Rate: {sample_rate}Hz")
+    print(f"Signal length {nSamples / sample_rate}s (Number of Samples: {nSamples})")
+    print(f"Num Frequencies: {num_freqs}")
+    print(f"Num Filters: {num_filters}")
+    sys.stdout.flush()
 
     # create the nonlinear programming model
     nlp = ipyopt.Problem(
@@ -149,11 +249,10 @@ def main():
         eval_jac_g = eval_jac_g, # jacobian of the constraint functions,
         ipopt_options = {
             'print_level': 5,
-            #'max_iter': 50,
+            'max_iter': 2000,
         },
         intermediate_callback=intermediate_callback
     )
-    #nlp.set()
 
     # define the initial guess
     x0 = base_phases
@@ -163,7 +262,7 @@ def main():
 
     # report the results
     print(f"obj: {obj}dB")
-
+    
     final_phases = _x
 
     final_signal = np.fft.irfft(amplitudes * np.exp(1j * final_phases))
@@ -262,3 +361,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
