@@ -11,6 +11,7 @@ from functools import partial
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
 from scipy.stats import norm
+import os
 
 from freq_dependent_crest_factor import get_fractional_octave_center_frequencies, design_fractional_octave_fir_filter
 
@@ -58,8 +59,11 @@ def crest_factor_mtx(signal_mtx):
 
     return jnp.where(rms <= 0.0, jnp.inf, peak / rms)
 
-def noise_signal_obj_filter(phases, amplitudes, filters, target_crests, target_crest_weightings):
-    spectrum_row = amplitudes * jnp.exp(1j * phases)
+def noise_signal_obj_filter(phases, num_phases_lf_pad, num_phases_hf_pad, amplitudes, filters, target_crests, target_crest_weightings):
+    
+    padded_phases = jnp.pad(phases, (num_phases_lf_pad, num_phases_hf_pad), mode='constant', constant_values=0.0)
+
+    spectrum_row = amplitudes * jnp.exp(1j * padded_phases)
 
     # spectrum is in each row
     spectrum_matrix = jnp.tile(spectrum_row, (filters.shape[0], 1))
@@ -94,26 +98,64 @@ eval_jac_g_sparsity_indices = (np.array([]), np.array([]))
 def main():
     """Entry point."""
 
-    sample_rate = 96000
-    nSamples = 65536*2*2*2*2
-
-    #print(f"{nSamples / sample_rate} seconds")
-
     target_crest = 12
+    lf_cutoff = 10.0
+    hf_cutoff = 22400.0
+    sample_rate = 96000
+    nSamples = 65536#*2*2*2*2
 
     freqs = np.fft.rfftfreq(nSamples, 1/sample_rate)
     num_freqs = len(freqs)
-    #print(freqs)
+    
 
-    #print(f"delta f: {freqs[1] - freqs[0]}Hz")
+    amplitudes = generate_pink_amplitudes(freqs, lf_cutoff, hf_cutoff)
 
-    #sys.stdout.flush()  
-
-    amplitudes = generate_pink_amplitudes(freqs)
-    #print(amplitudes)
 
     rng = np.random.default_rng(12345)
-    base_phases = rng.uniform(-np.pi, np.pi, num_freqs)
+
+    if os.path.exists('starting_point.wav'):
+        # Load starting point from WAV file
+        starting_point_sample_rate, starting_signal = wavfile.read('starting_point.wav')
+        if starting_point_sample_rate != 96000:
+            raise ValueError(f"Expected sample rate of 96000Hz, but got {starting_point_sample_rate}Hz")
+        starting_point_n_samples = len(starting_signal)
+        if starting_point_n_samples != nSamples:
+            raise ValueError(f"Expected {nSamples} samples, but got {starting_point_n_samples} samples")
+        
+        starting_signal = starting_signal.astype(np.float64)
+        starting_point_spectrum = np.fft.rfft(starting_signal)
+
+        base_phases = np.angle(starting_point_spectrum)
+
+        print(f"Using initial phases from 'starting_point.wav'")
+    else:
+        base_phases = rng.uniform(-np.pi, np.pi, num_freqs)
+
+        print(f"Using random initial phases in range [-pi, pi]")
+
+    # Adjust the number of phases to optimize (don't optimize where amplitude is zero / very small)
+    num_phases_lf_pad = 0
+    num_phases_hf_pad = 0
+    lf_cutoff_index = 0
+    hf_cutoff_index = len(amplitudes)
+
+    if lf_cutoff is not None:
+        lf_cutoff_index = np.argmax(amplitudes > 1e-03)
+        num_phases_lf_pad = lf_cutoff_index
+
+    if hf_cutoff is not None:
+        hf_cutoff_index = len(amplitudes) - np.argmax(amplitudes[::-1] > 1e-03)
+        num_phases_hf_pad = len(amplitudes) - hf_cutoff_index
+
+    num_phases_to_optimize = num_freqs - num_phases_lf_pad - num_phases_hf_pad
+
+    print(f"Removing {num_phases_lf_pad + num_phases_hf_pad} of {num_freqs} phases from optimization, {num_phases_to_optimize} phases remaining")
+    print(f"LF cutoff freq: {lf_cutoff}Hz, HF cutoff freq: {hf_cutoff}Hz")
+    print(f"Optimization Indices: [{lf_cutoff_index};{hf_cutoff_index-1}] ->  [{freqs[lf_cutoff_index]};{freqs[hf_cutoff_index-1]}]Hz")
+    
+    base_phases = base_phases[lf_cutoff_index:hf_cutoff_index]
+    if len(base_phases) != num_phases_to_optimize:
+        raise ValueError(f"Internal error, Expected {num_phases_to_optimize} phases to optimize, but got {len(base_phases)} phases")
 
     octave_freqs = get_fractional_octave_center_frequencies(1)
     num_octave_freqs = len(octave_freqs)
@@ -175,6 +217,8 @@ def main():
     opt_fun_jit = jax.jit(partial(
         noise_signal_obj_filter,
         amplitudes=amplitudes,
+        num_phases_lf_pad=num_phases_lf_pad,
+        num_phases_hf_pad=num_phases_hf_pad,
         filters=filters,
         target_crests=target_crests,
         target_crest_weightings=target_crest_weightings
@@ -200,7 +244,7 @@ def main():
     # print(res)
 
     # define the parameters and their box constraints
-    nvar = num_freqs
+    nvar = num_phases_to_optimize
     x_l = np.array([-np.pi] * nvar, dtype=float)
     x_u = np.array([np.pi] * nvar, dtype=float)
 
@@ -249,7 +293,7 @@ def main():
         eval_jac_g = eval_jac_g, # jacobian of the constraint functions,
         ipopt_options = {
             'print_level': 5,
-            'max_iter': 2000,
+            'max_iter': 50,
         },
         intermediate_callback=intermediate_callback
     )
@@ -262,8 +306,8 @@ def main():
 
     # report the results
     print(f"obj: {obj}dB")
-    
-    final_phases = _x
+
+    final_phases = np.pad(_x, (num_phases_lf_pad, num_phases_hf_pad), mode='constant', constant_values=0.0)
 
     final_signal = np.fft.irfft(amplitudes * np.exp(1j * final_phases))
     final_signal = final_signal / np.max(np.abs(final_signal))
