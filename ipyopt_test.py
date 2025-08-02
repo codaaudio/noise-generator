@@ -1,7 +1,6 @@
 #!/bin/env python3
 
-"""Example for optimizing scipy.optimize.rosen."""
-
+import math
 import sys
 import numpy as np
 import jax
@@ -12,8 +11,22 @@ from scipy.io import wavfile
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import os
-
 from freq_dependent_crest_factor import get_fractional_octave_center_frequencies, design_fractional_octave_fir_filter
+import signal
+
+# global
+abort_calculation = False
+optimization_running = False
+
+def handle_siginit(sig, frame):
+    if optimization_running:
+        global abort_calculation
+        print(f"Received SIGINT, aborting optimization ASAP...")
+        abort_calculation = True
+    else:
+        print(f"Received SIGINT, exiting...")
+        sys.exit(0)
+
 
 def generate_pink_amplitudes(freqs, lf_cutoff = 10, hf_cutoff = 22400, normalization_freq=1000.0):
     # Pink noise has 1/f power spectral density, normalize to 1 at 1kHz
@@ -29,9 +42,9 @@ def generate_pink_amplitudes(freqs, lf_cutoff = 10, hf_cutoff = 22400, normaliza
 
 
 @jax.jit
-def crest_factor(signal):
-    peak = jnp.max(jnp.abs(signal))
-    rms = jnp.sqrt(jnp.mean(signal**2))
+def crest_factor(sig):
+    peak = jnp.max(jnp.abs(sig))
+    rms = jnp.sqrt(jnp.mean(sig**2))
 
     return jnp.where(rms <= 0.0, jnp.inf, peak / rms)
 
@@ -96,7 +109,7 @@ def eval_jac_g(_x, _out):
 eval_jac_g_sparsity_indices = (np.array([]), np.array([]))
 
 def main():
-    """Entry point."""
+    signal.signal(signal.SIGINT, handle_siginit)
 
     target_crest = 12
     lf_cutoff = 10.0
@@ -225,8 +238,27 @@ def main():
     ))
     opt_grad_fun_jit = jax.jit(jax.grad(opt_fun_jit))
 
-    opt_fun = lambda phases: opt_fun_jit(phases)
-    opt_grad_fun = lambda phases: opt_grad_fun_jit(phases)
+    best_solution = base_phases.copy()
+    best_objective = math.inf
+
+    def opt_fun(phases):
+        obj = opt_fun_jit(phases)
+
+        nonlocal best_solution, best_objective
+        if obj < best_objective:
+            best_objective = obj
+            best_solution = phases.copy()
+            #print(f"DEBUG New best solution found and saved, obj is {obj:.6f}dB")
+
+        return obj
+
+    def opt_grad_fun(phases, out):
+        grad = opt_grad_fun_jit(phases)
+
+        out[()] = grad
+
+    #opt_fun = lambda phases: opt_fun_jit(phases)
+    #opt_grad_fun = lambda phases: opt_grad_fun_jit(phases)
 
     #CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP
     #CG, BFGS, Newton-CG: No Bounds
@@ -252,17 +284,31 @@ def main():
     ncon = 0
     g_l = np.array([], dtype=float)
     g_u = np.array([], dtype=float)
-
-    del opt_grad_fun
-
-    def opt_grad_fun(x, out):
-        out[()] = opt_grad_fun_jit(x)
     
-    def intermediate_callback(
-        mode: int, iter: int, obj_value: float, inf_pr: float, inf_du: float, mu: float, d_norm: float, regularization_size: float, alpha_du: float, alpha_pr: float, ls_trials: int
+    num_iters = 0
 
+    def intermediate_callback(
+        mode: int,
+        iter: int,
+        obj_value: float,
+        inf_pr: float,
+        inf_du: float,
+        mu: float,
+        d_norm: float,
+        regularization_size: float,
+        alpha_du: float,
+        alpha_pr: float,
+        ls_trials: int
     ):
         #print(f"Intermediate callback: iter={iter}, mode={mode}, obj_value={obj_value}, inf_pr={inf_pr}, inf_du={inf_du}, mu={mu}, d_norm={d_norm}, regularization_size={regularization_size}, alpha_du={alpha_du}, alpha_pr={alpha_pr}, ls_trials={ls_trials}")
+
+        nonlocal num_iters
+        num_iters = iter
+
+        # global
+        if abort_calculation:
+            print(f"Aborting optimization at iteration {iter} due to user request.")
+            return False
 
         # Terminate, 0.0001dB is good enough.
         if obj_value < 1e-03:
@@ -302,10 +348,24 @@ def main():
     x0 = base_phases
 
     # compute the results using ipopt
+    global optimization_running
+    optimization_running = True
+
     _x, obj, status = nlp.solve(x0)
 
+    optimization_running = False
+
     # report the results
-    print(f"obj: {obj}dB")
+    print(f"IPOPT returned obj: {obj}dB")
+
+    final_obj = obj
+
+    if obj > best_objective:
+        print(f"INFO: IPOPT returned a worse final solution ({obj:.6f}dB) than the best found during optimization ({best_objective:.6f}dB).")
+        print("Using the best solution found during optimization instead")
+
+        _x = best_solution
+        final_obj = best_objective
 
     final_phases = np.pad(_x, (num_phases_lf_pad, num_phases_hf_pad), mode='constant', constant_values=0.0)
 
@@ -315,10 +375,13 @@ def main():
     actual_cf = crest_factor(final_signal)
     actual_cf_dB = crest_factor_to_dB(actual_cf)
 
-    print(f"Optimized {num_freqs} frequencies")
+    print("\nSUMMARY")
+    print(f"=========================================")
+    print(f"Optimized {num_freqs} frequencies, reduced to {num_phases_to_optimize} phases")
+    print(f"Achieved error of {final_obj:.6f}dB after {num_iters} iterations")
     print(f"Signal statistics ({sample_rate/1000:.1f}kHz):")
     print(f"Duration: {len(final_signal) / sample_rate:.3f} s ({len(final_signal)} samples)")
-    print(f"Crest factor: {actual_cf_dB:.3f}dB ({actual_cf:.3}x)")
+    print(f"Broadband Crest factor: {actual_cf_dB:.3f}dB ({actual_cf:.3}x)")
     print(f"Peak value: {np.max(np.abs(final_signal)):.3f}")
     print(f"RMS value: {np.sqrt(np.mean(final_signal**2)):.3f}")
     print(f"Mean: {np.mean(final_signal):.6f}")
