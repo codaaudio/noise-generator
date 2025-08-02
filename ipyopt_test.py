@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import os
 from freq_dependent_crest_factor import get_fractional_octave_center_frequencies, design_fractional_octave_fir_filter
-import signal
+import signal as signal_handling
+import scipy.signal as signal
 
 # global
 abort_calculation = False
@@ -28,7 +29,7 @@ def handle_siginit(sig, frame):
         sys.exit(0)
 
 
-def generate_pink_amplitudes(freqs, lf_cutoff = 10, hf_cutoff = 22400, normalization_freq=1000.0):
+def generate_pink_amplitudes(freqs, normalization_freq=1000.0):
     # Pink noise has 1/f power spectral density, normalize to 1 at 1kHz
     # Therefore we need 1/sqrt(f) amplitude spectral density, because
     # psd = asd^2, so if psd ~ 1/f, then asd ~ 1/sqrt(f)
@@ -37,9 +38,78 @@ def generate_pink_amplitudes(freqs, lf_cutoff = 10, hf_cutoff = 22400, normaliza
     # Generate the amplitudes, prevent divison by zero at DC
     ampls = np.concatenate([[0.0], np.sqrt(normalization_freq) / np.sqrt(np.abs(freqs[1:]))])
 
-    # Set values below lf_cutoff to 0
-    return np.where((freqs < lf_cutoff) | (freqs > hf_cutoff), np.zeros(len(ampls)), ampls)
+    return ampls
 
+def generate_white_amplitudes(freqs):
+    # White noise has flat amplitude spectral density and power spectral density
+    ampls = np.concatenate([[0.0], np.ones(len(freqs) - 1)])
+
+    # Set values below lf_cutoff to 0
+    return ampls
+
+def generate_brown_amplitudes(freqs, normalization_freq=1000.0):
+    # Brown noise has 1/f^2 power spectral density, therefore 1/f amplitude spectral density
+    # Normalize to 1 at 1kHz
+    ampls = np.concatenate([[0.0], np.sqrt(normalization_freq) / np.abs(freqs[1:])])
+
+    # Set values below lf_cutoff to 0
+    return ampls
+
+def generate_speech_amplitudes(freqs):
+
+    # Second order high-pass filter
+    # resonant frequency fh= 142 Hz Q = 0.58
+    fh = 142  # Hz
+    Q1 = 0.58
+    fac = 1.0 / (2*np.pi*fh)
+    num1, den1 = [fac**2, 0.0, 0.0], [fac**2, fac/Q1, 1.0]
+
+    #Biquadratic peaking filter
+    # Centre frequency fc = 500 Hz Q = 1.78 Gain g = 2.7 dB
+    gain2 = 2.7
+    Q2 = 1.78
+    fc = 500
+    GainFac2 = 10**(gain2 / 20)
+    W = 2.0*np.asinh(1.0/(2.0*Q2))/np.log(2)
+    w0 = 2.0*np.pi*fc
+    dW = w0*(2**(W/2)-2**(-(W/2)))
+    A = dW*np.sqrt(1/GainFac2)
+    B = GainFac2*A
+    num2, den2 = [1.0, B, w0**2], [1.0, A, w0**2]
+
+
+    # First order low-pass filter
+    # Turnover frequency f l = 315 Hz
+    fl = 315
+    num3, den3 = [1], [1.0 / (2*np.pi*fl), 1.0]
+
+    # Gain
+    gain4 = 4.0
+    GainFac4 = 10**(gain4/20)
+    num4, den4 = [GainFac4], [1.0]
+
+    # Get individual responses
+    w1, h1 = signal.freqs(num1, den1, freqs)
+    w2, h2 = signal.freqs(num2, den2, freqs)
+    w3, h3 = signal.freqs(num3, den3, freqs)
+    w4, h4 = signal.freqs(num4, den4, freqs)
+
+    h5 = generate_pink_amplitudes(freqs)
+
+    # Combine by multiplying transfer functions
+    h_combined = h1 * h2 * h3 * h4 * h5
+
+    ampls = np.abs(h_combined)
+
+    return ampls
+
+def generate_pink_a_weighted(freqs):
+    a_weighting_fun = lambda f: (12194**2 * f**4) / ((f**2 + 20.6**2) * np.sqrt((f**2 + 107.7**2) * (f**2 + 737.9**2)) * (f**2 + 12194**2))
+
+    pink_amplitudes = generate_pink_amplitudes(freqs)
+    ampls = pink_amplitudes * a_weighting_fun(freqs)
+
+    return ampls
 
 @jax.jit
 def crest_factor(sig):
@@ -109,7 +179,7 @@ def eval_jac_g(_x, _out):
 eval_jac_g_sparsity_indices = (np.array([]), np.array([]))
 
 def main():
-    signal.signal(signal.SIGINT, handle_siginit)
+    signal_handling.signal(signal_handling.SIGINT, handle_siginit)
 
     target_crest = 12
     lf_cutoff = 10.0
@@ -121,7 +191,8 @@ def main():
     num_freqs = len(freqs)
     
 
-    amplitudes = generate_pink_amplitudes(freqs, lf_cutoff, hf_cutoff)
+    amplitudes = generate_pink_amplitudes(freqs)
+    amplitudes = np.where((freqs < lf_cutoff) | (freqs > hf_cutoff), np.zeros(len(amplitudes)), amplitudes)
 
 
     rng = np.random.default_rng(12345)
