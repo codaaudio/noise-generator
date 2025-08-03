@@ -10,7 +10,7 @@ from scipy.io import wavfile
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import os
-from freq_dependent_crest_factor import get_fractional_octave_center_frequencies, design_fractional_octave_fir_filter
+from freq_dependent_crest_factor import get_fractional_octave_center_frequencies, design_fractional_octave_fir_filter, design_fractional_octave_butterworth_filter
 import signal as signal_handling
 import scipy.signal as signal
 import scipy.interpolate
@@ -28,6 +28,38 @@ def handle_siginit(sig, frame):
         print(f"Received SIGINT, exiting...")
         sys.exit(0)
 
+def smooth_fractional_octave(data, fraction):
+    """
+    Data smoothing using fractional octave smoothing
+    Inspired by the paper "Increasing the Audio Measurement Capability of FFT Analysers by Microcomputer Post-Processing"
+    by Lipshitz, Scott and Vanderkooy
+    """
+
+    num_freqs = len(data)
+    lin_freqs = np.arange(num_freqs)
+    log_freqs = num_freqs**(lin_freqs/(num_freqs-1))
+
+    log_freqs_fractional_spacing = np.log2(log_freqs[1] / log_freqs[0])
+
+    window_width = int(2 * np.floor(1 / (fraction * log_freqs_fractional_spacing * 2)))
+
+    if window_width <= 1:
+        raise ValueError((
+            "Resulting smoothing window has length 1. Make smoothing wider (Decrease fraction) or use a longer signal. "
+        ))
+    
+    # Interpolate from lin frequency scale to log frequency scale
+    cs_lin_to_log = scipy.interpolate.CubicSpline(lin_freqs, data)
+    log_data = cs_lin_to_log(log_freqs)
+
+    # Fractional octave smoothing by constant width moving average on log frequency scale
+    log_smoothed = np.convolve(log_data, np.ones(window_width) / window_width, mode='same')
+
+    # Interpolate from log frequency scale back to lin frequency scale
+    cs_log_to_lin = scipy.interpolate.CubicSpline(log_freqs, log_smoothed)
+    smoothed_data_lin = cs_log_to_lin(lin_freqs)
+    
+    return smoothed_data_lin
 
 def generate_pink_amplitudes(freqs, normalization_freq=1000.0):
     # Pink noise has 1/f power spectral density, normalize to 1 at 1kHz
@@ -111,17 +143,19 @@ def generate_pink_a_weighted_amplitudes(freqs):
 
     return ampls
 
-def generate_amplitudes_like(freqs, source_wav):
+def generate_amplitudes_like(freqs, source_wav, block_size=65536):
     """Generate amplitudes for a noise signal based on the spectrum of a source WAV file."""
     sample_rate, data = wavfile.read(source_wav)
     # if multi channel, use first channel
     if data.ndim > 1:
         data = data[:, 0]
-    
+
     # Split in blocks of size (freqs.size-1)*2 and compute average spectrum
-    block_size = (len(freqs) - 1) * 2
     num_blocks = len(data) // block_size
+    freqs_source = np.fft.rfftfreq(block_size, d=1/sample_rate)
+    
     spectrum_blocks = []
+    print(f"Using FFT length {block_size}")
     for i in range(num_blocks):
         block = data[i * block_size:(i + 1) * block_size]
         if len(block) < block_size:
@@ -133,12 +167,18 @@ def generate_amplitudes_like(freqs, source_wav):
     # Average the magnitudes across all blocks
     avg_magnitudes = np.mean(spectrum_blocks, axis=0)
 
+    # pre smooth for LF range
+    smoothed_magnitudes = signal.savgol_filter(avg_magnitudes, 15, 3, mode='nearest')
+
+    # postsmooth with fractional octave smoothing for hf range
+    smoothed_magnitudes = smooth_fractional_octave(smoothed_magnitudes, fraction=6)
+
     #spectrum = np.fft.rfft(data)
     #magnitudes = np.abs(spectrum)
     
-    # Interpolate magnitudes to match the frequency bins
-    freqs_source = np.fft.rfftfreq(block_size, d=1/sample_rate)
-    cs = scipy.interpolate.CubicSpline(freqs_source, avg_magnitudes)
+    # Interpolate magnitudes to target frequencies
+    cs = scipy.interpolate.CubicSpline(freqs_source, smoothed_magnitudes)
+
     return cs(freqs)
 
 
@@ -262,7 +302,7 @@ def main():
     lf_cutoff = 10.0
     hf_cutoff = 22400.0
     sample_rate = 96000
-    nSamples = 65536#*2*2*2*2
+    nSamples = 65536*2*2*2*2
 
     freqs = np.fft.rfftfreq(nSamples, 1/sample_rate)
     num_freqs = len(freqs)
@@ -271,8 +311,7 @@ def main():
     #amplitudes = generate_pink_amplitudes(freqs)
     amplitudes = generate_amplitudes_like(freqs, 'Music-Noise_96kHz.wav')
     amplitudes = np.where((freqs < lf_cutoff) | (freqs > hf_cutoff), np.zeros(len(amplitudes)), amplitudes)
-
-
+    
     rng = np.random.default_rng(12345)
 
     if os.path.exists('starting_point.wav'):
