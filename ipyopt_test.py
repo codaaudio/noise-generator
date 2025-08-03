@@ -5,7 +5,6 @@ import sys
 import numpy as np
 import jax
 import jax.numpy as jnp
-import ipyopt
 from functools import partial
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
@@ -14,6 +13,7 @@ import os
 from freq_dependent_crest_factor import get_fractional_octave_center_frequencies, design_fractional_octave_fir_filter
 import signal as signal_handling
 import scipy.signal as signal
+import scipy.interpolate
 
 # global
 abort_calculation = False
@@ -103,13 +103,89 @@ def generate_speech_amplitudes(freqs):
 
     return ampls
 
-def generate_pink_a_weighted(freqs):
+def generate_pink_a_weighted_amplitudes(freqs):
     a_weighting_fun = lambda f: (12194**2 * f**4) / ((f**2 + 20.6**2) * np.sqrt((f**2 + 107.7**2) * (f**2 + 737.9**2)) * (f**2 + 12194**2))
 
     pink_amplitudes = generate_pink_amplitudes(freqs)
     ampls = pink_amplitudes * a_weighting_fun(freqs)
 
     return ampls
+
+def generate_amplitudes_like(freqs, source_wav):
+    """Generate amplitudes for a noise signal based on the spectrum of a source WAV file."""
+    sample_rate, data = wavfile.read(source_wav)
+    # if multi channel, use first channel
+    if data.ndim > 1:
+        data = data[:, 0]
+    
+    # Split in blocks of size (freqs.size-1)*2 and compute average spectrum
+    block_size = (len(freqs) - 1) * 2
+    num_blocks = len(data) // block_size
+    spectrum_blocks = []
+    for i in range(num_blocks):
+        block = data[i * block_size:(i + 1) * block_size]
+        if len(block) < block_size:
+            continue
+        # Compute FFT and take magnitudes
+        spectrum = np.fft.rfft(block)
+        magnitudes = np.abs(spectrum)
+        spectrum_blocks.append(magnitudes)
+    # Average the magnitudes across all blocks
+    avg_magnitudes = np.mean(spectrum_blocks, axis=0)
+
+    #spectrum = np.fft.rfft(data)
+    #magnitudes = np.abs(spectrum)
+    
+    # Interpolate magnitudes to match the frequency bins
+    freqs_source = np.fft.rfftfreq(block_size, d=1/sample_rate)
+    cs = scipy.interpolate.CubicSpline(freqs_source, avg_magnitudes)
+    return cs(freqs)
+
+
+def generate_music_noise_crests(freqs):
+
+    if freqs is None:
+        return 18.06 #broadband crest factor
+
+    one_third_crest_factors = np.array([
+        [25, 12.5],
+        [31.5, 12.5],
+        [40, 12.5],
+        [50, 12.5],
+        [63, 12.5],
+        [80, 12.5],
+        [100, 12.5],
+        [125, 12.5],
+        [160, 12.5],
+        [200, 12.5],
+        [250, 12.6],
+        [315, 12.7],
+        [400, 12.8],
+        [500, 12.9],
+        [630, 13],
+        [800, 13.15],
+        [1000, 13.343],
+        [1250, 13.478],
+        [1600, 13.935],
+        [2000, 14.5],
+        [2500, 14.962],
+        [3150, 15.503],
+        [4000, 16.334],
+        [5000, 17],
+        [6300, 18],
+        [8000, 18.726],
+        [10000, 19.462],
+        [12500, 19.986],
+        [16000, 20.7],
+        [20000, 21.506],
+        [24000, 22.3]
+    ])
+
+    # Interpolate the crest factors to the frequencies
+    cs = scipy.interpolate.CubicSpline(one_third_crest_factors[:, 0], one_third_crest_factors[:, 1])
+    interpolated_crests = cs(freqs)
+
+    return interpolated_crests
 
 @jax.jit
 def crest_factor(sig):
@@ -163,6 +239,7 @@ def noise_signal_obj_filter(phases, num_phases_lf_pad, num_phases_hf_pad, amplit
     crest_factors_dB = crest_factor_to_dB(crest_factors)
 
     curr_obj_fun = jnp.mean(jnp.abs(crest_factors_dB - target_crests) * target_crest_weightings)
+    #curr_obj_fun = jnp.std(crest_factors_dB)
 
     return curr_obj_fun
 
@@ -191,7 +268,8 @@ def main():
     num_freqs = len(freqs)
     
 
-    amplitudes = generate_pink_amplitudes(freqs)
+    #amplitudes = generate_pink_amplitudes(freqs)
+    amplitudes = generate_amplitudes_like(freqs, 'Music-Noise_96kHz.wav')
     amplitudes = np.where((freqs < lf_cutoff) | (freqs > hf_cutoff), np.zeros(len(amplitudes)), amplitudes)
 
 
@@ -289,9 +367,14 @@ def main():
     
     print("Done.", flush=True)
 
-    #num_filters = 2  # Number of filters to apply
-    #filters = np.ones((num_filters, num_freqs), dtype=np.float32)
-    target_crests = np.full((num_filters,), target_crest, dtype=np.float32)
+    #target_crests = np.full((num_filters,), target_crest, dtype=np.float32)
+
+    # Get crest factor values
+    broadband_crest = generate_music_noise_crests(None)
+    octave_crests = generate_music_noise_crests(octave_freqs)
+    third_octave_crests = generate_music_noise_crests(third_octave_freqs)
+    tf_oct_crests = generate_music_noise_crests(tf_oct_freqs)
+    target_crests = np.concatenate([[broadband_crest], octave_crests, third_octave_crests, tf_oct_crests]).astype(np.float32)
 
     target_crest_weightings = np.ones((num_filters,), dtype=np.float32)
     target_crest_weightings[0] = 20.0
@@ -323,26 +406,11 @@ def main():
 
         return obj
 
-    def opt_grad_fun(phases, out):
+    def opt_grad_fun(phases):
         grad = opt_grad_fun_jit(phases)
 
-        out[()] = grad
-
-    #opt_fun = lambda phases: opt_fun_jit(phases)
-    #opt_grad_fun = lambda phases: opt_grad_fun_jit(phases)
-
-    #CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP
-    #CG, BFGS, Newton-CG: No Bounds
-    # -> L-BFGS-B, TNC, SLSQP
-    # res = scipy.optimize.minimize(
-    #     fun = opt_fun,
-    #     x0 = base_phases,
-    #     method='SLSQP',
-    #     jac = opt_grad_fun,
-    #     bounds = [(-np.pi, np.pi),] * num_freqs,
-    #     options={'disp': True,},
-    #     callback=lambda xk: print(f"Callback"),
-    # )
+        #out[()] = grad
+        return grad
 
     # print(res)
 
@@ -359,33 +427,23 @@ def main():
     num_iters = 0
 
     def intermediate_callback(
-        mode: int,
-        iter: int,
-        obj_value: float,
-        inf_pr: float,
-        inf_du: float,
-        mu: float,
-        d_norm: float,
-        regularization_size: float,
-        alpha_du: float,
-        alpha_pr: float,
-        ls_trials: int
+        intermediate_result: scipy.optimize.OptimizeResult
     ):
-        #print(f"Intermediate callback: iter={iter}, mode={mode}, obj_value={obj_value}, inf_pr={inf_pr}, inf_du={inf_du}, mu={mu}, d_norm={d_norm}, regularization_size={regularization_size}, alpha_du={alpha_du}, alpha_pr={alpha_pr}, ls_trials={ls_trials}")
-
         nonlocal num_iters
-        num_iters = iter
+        num_iters += 1
+
+        obj_value = intermediate_result.fun
+
+        print(f"Iteration {num_iters}, Objective: {obj_value:.6f}dB, Best: {best_objective:.6f}dB", flush=True)
 
         # global
         if abort_calculation:
-            print(f"Aborting optimization at iteration {iter} due to user request.")
-            return False
+            print(f"Aborting optimization at iteration {num_iters} due to user request.")
+            raise StopIteration
 
         # Terminate, 0.0001dB is good enough.
         if obj_value < 1e-03:
-            return False
-
-        return True
+            raise StopIteration
 
     print("Starting optimization:")
     print(f"Sample Rate: {sample_rate}Hz")
@@ -394,27 +452,6 @@ def main():
     print(f"Num Filters: {num_filters}")
     sys.stdout.flush()
 
-    # create the nonlinear programming model
-    nlp = ipyopt.Problem(
-        n = nvar, # number of variables
-        x_l = x_l, # lower bounds?
-        x_u = x_u, # upper bounds?
-        m = ncon, # number of constraints?
-        g_l = g_l, # constraint lower bounds
-        g_u = g_u, # constraint upper bounds
-        sparsity_indices_jac_g = eval_jac_g_sparsity_indices, # sparsity pattern of the jacobian
-        sparsity_indices_h = None, # sparsity pattern of the hessian
-        eval_f = opt_fun, # objective function
-        eval_grad_f = opt_grad_fun, # gradient of the objective function
-        eval_g = eval_g, # constraint functions
-        eval_jac_g = eval_jac_g, # jacobian of the constraint functions,
-        ipopt_options = {
-            'print_level': 5,
-            'max_iter': 50,
-        },
-        intermediate_callback=intermediate_callback
-    )
-
     # define the initial guess
     x0 = base_phases
 
@@ -422,23 +459,30 @@ def main():
     global optimization_running
     optimization_running = True
 
-    _x, obj, status = nlp.solve(x0)
+    #_x, obj, status = nlp.solve(x0)
+    #CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP
+    #CG, BFGS, Newton-CG: No Bounds
+    # -> L-BFGS-B, TNC, SLSQP
+    # ignore res, we track the best solution ourselves
+    scipy.optimize.minimize(
+        fun = opt_fun,
+        x0 = x0,
+        method='L-BFGS-B',
+        jac = opt_grad_fun,
+        bounds = [(-np.pi, np.pi),] * num_phases_to_optimize,
+        options={
+            #'maxiter': 5
+        },
+        callback=intermediate_callback
+    )
 
     optimization_running = False
 
-    # report the results
-    print(f"IPOPT returned obj: {obj}dB")
+    final_obj = best_objective
 
-    final_obj = obj
+    print(f"Optimization finished after {num_iters} iterations, best objective: {final_obj:.6f}dB")
 
-    if obj > best_objective:
-        print(f"INFO: IPOPT returned a worse final solution ({obj:.6f}dB) than the best found during optimization ({best_objective:.6f}dB).")
-        print("Using the best solution found during optimization instead")
-
-        _x = best_solution
-        final_obj = best_objective
-
-    final_phases = np.pad(_x, (num_phases_lf_pad, num_phases_hf_pad), mode='constant', constant_values=0.0)
+    final_phases = np.pad(best_solution, (num_phases_lf_pad, num_phases_hf_pad), mode='constant', constant_values=0.0)
 
     final_signal = np.fft.irfft(amplitudes * np.exp(1j * final_phases))
     final_signal = final_signal / np.max(np.abs(final_signal))
