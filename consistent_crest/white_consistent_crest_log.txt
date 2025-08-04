@@ -1,0 +1,216 @@
+Using random initial phases in range [-pi, pi]
+Removing 279731 of 524289 phases from optimization, 244558 phases remaining
+LF cutoff freq: 10.0Hz, HF cutoff freq: 22400.0Hz
+Optimization Indices: [110;244667] ->  [10.07080078125;22399.932861328125]Hz
+Building 287 filters... Done.
+Starting optimization:
+Sample Rate: 96000Hz
+Signal length 10.922666666666666s (Number of Samples: 1048576)
+Num Frequencies: 524289
+Num Filters: 287
+Iteration 1, Objective: 1.487563dB, Best: 1.487563dB
+Iteration 2, Objective: 0.734390dB, Best: 0.734390dB
+Iteration 3, Objective: 0.370510dB, Best: 0.370510dB
+Iteration 4, Objective: 0.282191dB, Best: 0.282191dB
+Iteration 5, Objective: 0.259745dB, Best: 0.259745dB
+Iteration 6, Objective: 0.182700dB, Best: 0.182700dB
+Iteration 7, Objective: 0.158096dB, Best: 0.158096dB
+Iteration 8, Objective: 0.126008dB, Best: 0.126008dB
+Iteration 9, Objective: 0.113402dB, Best: 0.113402dB
+Iteration 10, Objective: 0.090458dB, Best: 0.090458dB
+Iteration 11, Objective: 0.081499dB, Best: 0.081499dB
+Iteration 12, Objective: 0.069974dB, Best: 0.069974dB
+Iteration 13, Objective: 0.064149dB, Best: 0.064149dB
+Iteration 14, Objective: 0.057845dB, Best: 0.057845dB
+Iteration 15, Objective: 0.053008dB, Best: 0.053008dB
+Iteration 16, Objective: 0.047612dB, Best: 0.047612dB
+Iteration 17, Objective: 0.043218dB, Best: 0.043218dB
+Iteration 18, Objective: 0.040250dB, Best: 0.040250dB
+Iteration 19, Objective: 0.038017dB, Best: 0.038017dB
+Iteration 20, Objective: 0.035420dB, Best: 0.035420dB
+Iteration 21, Objective: 0.031468dB, Best: 0.031468dB
+Iteration 22, Objective: 0.029028dB, Best: 0.029028dB
+Iteration 23, Objective: 0.027069dB, Best: 0.027069dB
+Iteration 24, Objective: 0.025157dB, Best: 0.025157dB
+Iteration 25, Objective: 0.023628dB, Best: 0.023628dB
+Iteration 26, Objective: 0.022162dB, Best: 0.022162dB
+Iteration 27, Objective: 0.020096dB, Best: 0.020096dB
+Iteration 28, Objective: 0.018379dB, Best: 0.018379dB
+Iteration 29, Objective: 0.016499dB, Best: 0.016499dB
+Iteration 30, Objective: 0.014734dB, Best: 0.014734dB
+Iteration 31, Objective: 0.013590dB, Best: 0.013590dB
+Iteration 32, Objective: 0.012696dB, Best: 0.012696dB
+Iteration 33, Objective: 0.012183dB, Best: 0.012183dB
+Iteration 34, Objective: 0.011670dB, Best: 0.011670dB
+Iteration 35, Objective: 0.011442dB, Best: 0.011442dB
+Iteration 36, Objective: 0.010999dB, Best: 0.010999dB
+Iteration 37, Objective: 0.010638dB, Best: 0.010638dB
+Iteration 38, Objective: 0.009917dB, Best: 0.009917dB
+Iteration 39, Objective: 0.009196dB, Best: 0.009196dB
+Iteration 40, Objective: 0.008239dB, Best: 0.008239dB
+Iteration 41, Objective: 0.007452dB, Best: 0.007452dB
+Iteration 42, Objective: 0.007095dB, Best: 0.007095dB
+Iteration 43, Objective: 0.006905dB, Best: 0.006905dB
+Iteration 44, Objective: 0.006749dB, Best: 0.006749dB
+Iteration 45, Objective: 0.006722dB, Best: 0.006722dB
+Iteration 46, Objective: 0.006649dB, Best: 0.006649dB
+Iteration 47, Objective: 0.006618dB, Best: 0.006618dB
+Iteration 48, Objective: 0.006569dB, Best: 0.006569dB
+Iteration 49, Objective: 0.006484dB, Best: 0.006484dB
+Iteration 50, Objective: 0.006392dB, Best: 0.006392dB
+Iteration 51, Objective: 0.006326dB, Best: 0.006326dB
+Iteration 52, Objective: 0.006228dB, Best: 0.006228dB
+Iteration 53, Objective: 0.006156dB, Best: 0.006156dB
+Iteration 54, Objective: 0.006050dB, Best: 0.006050dB
+Iteration 55, Objective: 0.005881dB, Best: 0.005881dB
+Iteration 56, Objective: 0.005660dB, Best: 0.005660dB
+Iteration 57, Objective: 0.005398dB, Best: 0.005398dB
+Iteration 58, Objective: 0.005120dB, Best: 0.005120dB
+Iteration 59, Objective: 0.004872dB, Best: 0.004872dB
+Iteration 60, Objective: 0.004630dB, Best: 0.004630dB
+Iteration 61, Objective: 0.004509dB, Best: 0.004509dB
+Iteration 62, Objective: 0.004422dB, Best: 0.004422dB
+Iteration 63, Objective: 0.004316dB, Best: 0.004316dB
+Iteration 64, Objective: 0.004262dB, Best: 0.004262dB
+Iteration 65, Objective: 0.004177dB, Best: 0.004177dB
+Iteration 66, Objective: 0.004028dB, Best: 0.004028dB
+Iteration 67, Objective: 0.003796dB, Best: 0.003796dB
+Iteration 68, Objective: 0.003657dB, Best: 0.003657dB
+Iteration 69, Objective: 0.003371dB, Best: 0.003371dB
+Iteration 70, Objective: 0.003237dB, Best: 0.003237dB
+Iteration 71, Objective: 0.003032dB, Best: 0.003032dB
+Iteration 72, Objective: 0.002943dB, Best: 0.002943dB
+Iteration 73, Objective: 0.002764dB, Best: 0.002764dB
+Iteration 74, Objective: 0.002722dB, Best: 0.002722dB
+Iteration 75, Objective: 0.002689dB, Best: 0.002689dB
+Iteration 76, Objective: 0.002657dB, Best: 0.002657dB
+Iteration 77, Objective: 0.002598dB, Best: 0.002598dB
+Iteration 78, Objective: 0.002568dB, Best: 0.002568dB
+Iteration 79, Objective: 0.002529dB, Best: 0.002529dB
+Iteration 80, Objective: 0.002495dB, Best: 0.002495dB
+Iteration 81, Objective: 0.002472dB, Best: 0.002472dB
+Iteration 82, Objective: 0.002448dB, Best: 0.002448dB
+Iteration 83, Objective: 0.002429dB, Best: 0.002429dB
+Iteration 84, Objective: 0.002412dB, Best: 0.002412dB
+Iteration 85, Objective: 0.002395dB, Best: 0.002395dB
+Iteration 86, Objective: 0.002382dB, Best: 0.002382dB
+Iteration 87, Objective: 0.002375dB, Best: 0.002375dB
+Iteration 88, Objective: 0.002371dB, Best: 0.002371dB
+Iteration 89, Objective: 0.002365dB, Best: 0.002365dB
+Iteration 90, Objective: 0.002359dB, Best: 0.002359dB
+Iteration 91, Objective: 0.002353dB, Best: 0.002353dB
+Iteration 92, Objective: 0.002347dB, Best: 0.002347dB
+Iteration 93, Objective: 0.002335dB, Best: 0.002335dB
+Iteration 94, Objective: 0.002329dB, Best: 0.002329dB
+Iteration 95, Objective: 0.002321dB, Best: 0.002321dB
+Iteration 96, Objective: 0.002314dB, Best: 0.002314dB
+Iteration 97, Objective: 0.002313dB, Best: 0.002313dB
+Iteration 98, Objective: 0.002307dB, Best: 0.002307dB
+Iteration 99, Objective: 0.002305dB, Best: 0.002305dB
+Iteration 100, Objective: 0.002302dB, Best: 0.002302dB
+Iteration 101, Objective: 0.002299dB, Best: 0.002299dB
+Iteration 102, Objective: 0.002297dB, Best: 0.002297dB
+Iteration 103, Objective: 0.002296dB, Best: 0.002296dB
+Iteration 104, Objective: 0.002294dB, Best: 0.002294dB
+Iteration 105, Objective: 0.002292dB, Best: 0.002292dB
+Iteration 106, Objective: 0.002289dB, Best: 0.002289dB
+Iteration 107, Objective: 0.002288dB, Best: 0.002288dB
+Iteration 108, Objective: 0.002283dB, Best: 0.002283dB
+Iteration 109, Objective: 0.002270dB, Best: 0.002270dB
+Iteration 110, Objective: 0.002260dB, Best: 0.002260dB
+Iteration 111, Objective: 0.002255dB, Best: 0.002255dB
+Iteration 112, Objective: 0.002250dB, Best: 0.002250dB
+Iteration 113, Objective: 0.002239dB, Best: 0.002239dB
+Iteration 114, Objective: 0.002233dB, Best: 0.002233dB
+Iteration 115, Objective: 0.002227dB, Best: 0.002227dB
+Iteration 116, Objective: 0.002223dB, Best: 0.002223dB
+Iteration 117, Objective: 0.002218dB, Best: 0.002218dB
+Iteration 118, Objective: 0.002211dB, Best: 0.002211dB
+Iteration 119, Objective: 0.002207dB, Best: 0.002207dB
+Iteration 120, Objective: 0.002201dB, Best: 0.002201dB
+Iteration 121, Objective: 0.002188dB, Best: 0.002188dB
+Iteration 122, Objective: 0.002186dB, Best: 0.002186dB
+Iteration 123, Objective: 0.002180dB, Best: 0.002180dB
+Iteration 124, Objective: 0.002175dB, Best: 0.002175dB
+Iteration 125, Objective: 0.002172dB, Best: 0.002172dB
+Iteration 126, Objective: 0.002170dB, Best: 0.002170dB
+Iteration 127, Objective: 0.002168dB, Best: 0.002168dB
+Iteration 128, Objective: 0.002162dB, Best: 0.002162dB
+Iteration 129, Objective: 0.002160dB, Best: 0.002160dB
+Iteration 130, Objective: 0.002157dB, Best: 0.002157dB
+Iteration 131, Objective: 0.002156dB, Best: 0.002156dB
+Iteration 132, Objective: 0.002156dB, Best: 0.002156dB
+Iteration 133, Objective: 0.002154dB, Best: 0.002154dB
+Iteration 134, Objective: 0.002153dB, Best: 0.002153dB
+Iteration 135, Objective: 0.002151dB, Best: 0.002151dB
+Iteration 136, Objective: 0.002150dB, Best: 0.002150dB
+Iteration 137, Objective: 0.002148dB, Best: 0.002148dB
+Iteration 138, Objective: 0.002147dB, Best: 0.002147dB
+Iteration 139, Objective: 0.002144dB, Best: 0.002144dB
+Iteration 140, Objective: 0.002140dB, Best: 0.002140dB
+Iteration 141, Objective: 0.002138dB, Best: 0.002138dB
+Iteration 142, Objective: 0.002135dB, Best: 0.002135dB
+Iteration 143, Objective: 0.002132dB, Best: 0.002132dB
+Iteration 144, Objective: 0.002129dB, Best: 0.002129dB
+Iteration 145, Objective: 0.002125dB, Best: 0.002125dB
+Iteration 146, Objective: 0.002114dB, Best: 0.002114dB
+Iteration 147, Objective: 0.002111dB, Best: 0.002111dB
+Iteration 148, Objective: 0.002106dB, Best: 0.002106dB
+Iteration 149, Objective: 0.002100dB, Best: 0.002100dB
+Iteration 150, Objective: 0.002095dB, Best: 0.002095dB
+Iteration 151, Objective: 0.002086dB, Best: 0.002086dB
+Iteration 152, Objective: 0.002078dB, Best: 0.002078dB
+Iteration 153, Objective: 0.002068dB, Best: 0.002068dB
+Iteration 154, Objective: 0.002054dB, Best: 0.002054dB
+Iteration 155, Objective: 0.002036dB, Best: 0.002036dB
+Iteration 156, Objective: 0.002012dB, Best: 0.002012dB
+Iteration 157, Objective: 0.001997dB, Best: 0.001997dB
+Iteration 158, Objective: 0.001984dB, Best: 0.001984dB
+Iteration 159, Objective: 0.001971dB, Best: 0.001971dB
+Iteration 160, Objective: 0.001954dB, Best: 0.001954dB
+Iteration 161, Objective: 0.001944dB, Best: 0.001944dB
+Iteration 162, Objective: 0.001913dB, Best: 0.001913dB
+Iteration 163, Objective: 0.001901dB, Best: 0.001901dB
+Iteration 164, Objective: 0.001880dB, Best: 0.001880dB
+Iteration 165, Objective: 0.001839dB, Best: 0.001839dB
+Iteration 166, Objective: 0.001813dB, Best: 0.001813dB
+Iteration 167, Objective: 0.001780dB, Best: 0.001780dB
+Iteration 168, Objective: 0.001756dB, Best: 0.001756dB
+Iteration 169, Objective: 0.001739dB, Best: 0.001739dB
+Iteration 170, Objective: 0.001721dB, Best: 0.001721dB
+Iteration 171, Objective: 0.001694dB, Best: 0.001694dB
+Iteration 172, Objective: 0.001669dB, Best: 0.001669dB
+Iteration 173, Objective: 0.001642dB, Best: 0.001642dB
+Iteration 174, Objective: 0.001615dB, Best: 0.001615dB
+Iteration 175, Objective: 0.001585dB, Best: 0.001585dB
+Iteration 176, Objective: 0.001545dB, Best: 0.001545dB
+Iteration 177, Objective: 0.001511dB, Best: 0.001511dB
+Iteration 178, Objective: 0.001482dB, Best: 0.001482dB
+Iteration 179, Objective: 0.001447dB, Best: 0.001447dB
+Iteration 180, Objective: 0.001363dB, Best: 0.001363dB
+Iteration 181, Objective: 0.001303dB, Best: 0.001303dB
+Iteration 182, Objective: 0.001243dB, Best: 0.001243dB
+Iteration 183, Objective: 0.001174dB, Best: 0.001174dB
+Iteration 184, Objective: 0.001119dB, Best: 0.001119dB
+Iteration 185, Objective: 0.001102dB, Best: 0.001102dB
+Iteration 186, Objective: 0.001084dB, Best: 0.001084dB
+Iteration 187, Objective: 0.001073dB, Best: 0.001073dB
+Iteration 188, Objective: 0.001058dB, Best: 0.001058dB
+Iteration 189, Objective: 0.001043dB, Best: 0.001043dB
+Iteration 190, Objective: 0.001029dB, Best: 0.001029dB
+Iteration 191, Objective: 0.001015dB, Best: 0.001015dB
+Iteration 192, Objective: 0.001003dB, Best: 0.001003dB
+Iteration 193, Objective: 0.000991dB, Best: 0.000991dB
+Optimization finished after 193 iterations, best objective: 0.000991dB
+
+SUMMARY
+=========================================
+Optimized 524289 frequencies, reduced to 244558 phases
+Achieved error of 0.000991dB after 193 iterations
+Signal statistics (96.0kHz):
+Duration: 10.923 s (1048576 samples)
+Broadband Crest factor: 12.693dB (4.31x)
+Peak value: 1.000
+RMS value: 0.232
+Mean: 0.000000
+Std dev: 0.232
