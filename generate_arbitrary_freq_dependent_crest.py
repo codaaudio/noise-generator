@@ -42,18 +42,18 @@ good noise signal as starting point and just optimize the phases), it doesn't re
 
 Usage examples:
   # Generate pink noise with uniform 12dB crest factor and ~11 seconds run time (SLOW!! Will take hours to complete)
-  python3 generate_consistent_crest_noise.py --noise-type pink
+  python3 generate_arbitrary_freq_dependent_crest.py --noise-type pink
 
   # Generate music noise (frequency-dependent crest factors) and ~11 seconds run time (SLOW!! Will take hours to complete)
   # requires Music-Noise_96kHz.wav to derive amplitude spectrum
-  python3 generate_consistent_crest_noise.py --noise-type external-ampl-target --external-ampl-wav Music-Noise_96kHz.wav --crest-targets music
+  python3 generate_arbitrary_freq_dependent_crest.py --noise-type external-ampl-target --external-ampl-wav Music-Noise_96kHz.wav --crest-targets music
 
   # Generate pink noise with consistent crest factors (absolute level not controlled, just consistency)
   # Will take around an hour to complete
-  python3 generate_consistent_crest_noise.py --noise-type pink --objective-mode consistent
+  python3 generate_arbitrary_freq_dependent_crest.py --noise-type pink --objective-mode consistent
 
   # Generate pink noise with only broadband crest factor control and small number of samples, very quick
-  python3 generate_consistent_crest_noise.py --noise-type pink --objective-mode broadband-only --num-samples 32768
+  python3 generate_arbitrary_freq_dependent_crest.py --noise-type pink --objective-mode broadband-only --num-samples 32768
 
 """
 
