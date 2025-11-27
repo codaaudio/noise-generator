@@ -8,10 +8,10 @@ The generated noise is mainly Periodic Noise, i.e. noise that is synthesized fro
 
 
 Main Files:
-- `generate_arbitrary_freq_dependent_crest.py`: Extremely versatile tool to generate noise signals with specific frequency dependent crest factors!
+- `generate_arbitrary_freq_dependent_crest.py`: **Extremely versatile tool to generate noise signals with specific frequency dependent crest factors!**
 - `generate_simple_broadband_crest_gradient_free.py`: Original simpler tool to generate noise signals with a specific broadband crest factor.
-- `target_crest` directory: Contains pre-generated noise signals with specific frequency-dependent crest factors (`--objective-mode target` in `generate_arbitrary_freq_dependent_crest.py`).
-- `consistent_crest` directory: Contains pre-generated noise signals with consistent crest factors across frequency bands (`--objective-mode consistent` in `generate_arbitrary_freq_dependent_crest.py`).
+- `target_crest` directory: Contains pre-generated noise signals with specific frequency-dependent crest factors (`--objective-mode target` in `generate_arbitrary_freq_dependent_crest.py`) and the log files from the generation process for reproducibility and credibility.
+- `consistent_crest` directory: Contains pre-generated noise signals with consistent crest factors across frequency bands (`--objective-mode consistent` in `generate_arbitrary_freq_dependent_crest.py`) and the log files from the generation process for reproducibility and credibility.
 
 Utility Files:
 - `freq_dependent_crest_factors.py`: Tool for analyzing frequency-dependent crest factors of signals.
