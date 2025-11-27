@@ -1,5 +1,40 @@
 #!/bin/env python3
 
+"""
+Advanced Consistent Crest Noise Generator
+
+This tool generates noise signals with consistent crest factors across multiple
+frequency bands simultaneously.
+
+The script uses gradient-based optimization with JAX for automatic differentiation.
+
+Unlike simpler noise generators that only target a single broadband crest factor,
+this generator optimizes the phase spectrum to achieve specific crest factors in
+octave bands, third-octave bands, and 1/24-octave bands simultaneously.
+
+The optimization process works as follows:
+1. Generate the desired amplitude spectrum (from file or analytical function)
+2. Build a bank of fractional octave filters (1, 1/3, and 1/24 octave) only once for performance reasons
+3. Generate an initial phase spectrum (random or from a starting WAV file)
+4. Synthesize the noise signal with the current phase spectrum
+5. Apply all filters to get band-limited signals
+6. Calculate the crest factor for each filtered signal
+7. Compute the weighted mean absolute error from target crest factors
+8. Use L-BFGS-B optimization with JAX gradients to adjust phases
+9. Repeat until convergence or user interruption (SIGINT)
+
+The target crest factors can be specified per frequency band, allowing generation
+of noise signals that match the statistical properties of real-world signals like
+music or speech.
+
+Features:
+- Supports pink, white, brown, speech-shaped, and A-weighted noise spectra
+- Can match amplitude spectrum from reference WAV files
+- Fractional octave smoothing for spectrum analysis
+- Graceful interruption handling (Ctrl+C saves best result)
+- Outputs WAV file plus amplitude and phase text files
+"""
+
 import math
 import sys
 import numpy as np
@@ -335,6 +370,7 @@ def main():
         print(f"Using random initial phases in range [-pi, pi]")
 
     # Adjust the number of phases to optimize (don't optimize where amplitude is zero / very small)
+    # This appears to massively improve stability and convergence speed
     num_phases_lf_pad = 0
     num_phases_hf_pad = 0
     lf_cutoff_index = 0
