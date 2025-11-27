@@ -41,11 +41,20 @@ good noise signal as starting point and just optimize the phases), it doesn't re
 
 
 Usage examples:
-  # Generate pink noise with uniform 12dB crest factor
-  python3 generate_consistent_crest_noise.py --noise-type pink --crest-mode uniform --uniform-crest-factor 12
+  # Generate pink noise with uniform 12dB crest factor and ~11 seconds run time (SLOW!! Will take hours to complete)
+  python3 generate_consistent_crest_noise.py --noise-type pink
 
-  # Generate music noise (frequency-dependent crest factors), requires Music-Noise_96kHz.wav to derive amplitude spectrum
-  python3 generate_consistent_crest_noise.py --noise-type external --external-wav Music-Noise_96kHz.wav --crest-mode music
+  # Generate music noise (frequency-dependent crest factors) and ~11 seconds run time (SLOW!! Will take hours to complete)
+  # requires Music-Noise_96kHz.wav to derive amplitude spectrum
+  python3 generate_consistent_crest_noise.py --noise-type external-ampl-target --external-ampl-wav Music-Noise_96kHz.wav --crest-targets music
+
+  # Generate pink noise with consistent crest factors (absolute level not controlled, just consistency)
+  # Will take around an hour to complete
+  python3 generate_consistent_crest_noise.py --noise-type pink --objective-mode consistent
+
+  # Generate pink noise with only broadband crest factor control and small number of samples, very quick
+  python3 generate_consistent_crest_noise.py --noise-type pink --objective-mode broadband-only --num-samples 32768
+
 """
 
 import math
@@ -309,16 +318,22 @@ def generate_uniform_crests(freqs, target_crest_dB):
     return np.full(len(freqs), target_crest_dB)
 
 
+friendly_objective_names = {
+    "target": "Frequency-Dependent Crest Factor Targeting",
+    "consistent": "Consistent Crest Factors (Minimize StdDev)",
+    "broadband-only": "Broadband Crest Factor Only",
+}
+
 friendly_noise_names = {
     "pink": "Periodic Pink Noise",
     "white": "Periodic White Noise",
     "brown": "Periodic Brown Noise",
     "speech": "Periodic IEC60268-16:2020 Speech shaped noise",
     "pink_a_weighted": "Periodic A-weighted Pink Noise",
-    "external": "Periodic External Spectrum Noise",
+    "external-ampl-target": "Periodic External Spectrum Noise",
 }
 
-friendly_crest_mode_names = {
+friendly_crest_targets_names = {
     "uniform": "Uniform Crest Factor",
     "music": "Music Noise (Frequency-Dependent Crest Factors)",
     "external-file": "External Crest Factor File",
@@ -338,15 +353,24 @@ def crest_factor_to_dB(cf):
     return 20 * jnp.log10(cf)
 
 
-def noise_signal_obj(phases, amplitudes, target_crest):
+def noise_signal_objective_single_broadband(
+    phases, num_phases_lf_pad, num_phases_hf_pad, amplitudes, target_broadband_crest
+):
 
-    curr_spectrum = amplitudes * jnp.exp(1j * phases)
+    padded_phases = jnp.pad(
+        phases,
+        (num_phases_lf_pad, num_phases_hf_pad),
+        mode="constant",
+        constant_values=0.0,
+    )
+
+    curr_spectrum = amplitudes * jnp.exp(1j * padded_phases)
 
     curr_signal = jnp.fft.irfft(curr_spectrum)
 
-    curr_crest_factor_dB = crest_factor_to_dB(crest_factor(curr_signal))
+    curr_broadband_crest_factor_dB = crest_factor_to_dB(crest_factor(curr_signal))
 
-    curr_obj_fun = jnp.abs(curr_crest_factor_dB - target_crest)
+    curr_obj_fun = jnp.abs(curr_broadband_crest_factor_dB - target_broadband_crest)
 
     return curr_obj_fun
 
@@ -360,7 +384,7 @@ def crest_factor_mtx(signal_mtx):
     return jnp.where(rms <= 0.0, jnp.inf, peak / rms)
 
 
-def noise_signal_obj_filter(
+def noise_signal_objective_multi_filter_target(
     phases,
     num_phases_lf_pad,
     num_phases_hf_pad,
@@ -401,6 +425,38 @@ def noise_signal_obj_filter(
     return curr_obj_fun
 
 
+def noise_signal_objective_multi_filter_consistent(
+    phases, num_phases_lf_pad, num_phases_hf_pad, amplitudes, filters
+):
+
+    padded_phases = jnp.pad(
+        phases,
+        (num_phases_lf_pad, num_phases_hf_pad),
+        mode="constant",
+        constant_values=0.0,
+    )
+
+    spectrum_row = amplitudes * jnp.exp(1j * padded_phases)
+
+    # spectrum is in each row
+    spectrum_matrix = jnp.tile(spectrum_row, (filters.shape[0], 1))
+
+    # apply the filters, arranged as matrix
+    spectrum_matrix = jnp.multiply(spectrum_matrix, filters)
+
+    # perform inverse FFT along the rows
+    # each row is a signal
+    signal_matrix = jnp.fft.irfft(spectrum_matrix, axis=1)
+
+    crest_factors = crest_factor_mtx(signal_matrix)
+
+    crest_factors_dB = crest_factor_to_dB(crest_factors)
+
+    curr_obj_fun = jnp.std(crest_factors_dB)
+
+    return curr_obj_fun
+
+
 def eval_g(_x, _out):
     return
 
@@ -420,11 +476,19 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Generate pink noise with uniform 12dB crest factor
-  %(prog)s --noise-type pink --crest-mode uniform --uniform-crest-factor 12
+  # Generate pink noise with uniform 12dB crest factor and ~11 seconds run time (SLOW!! Will take hours to complete)
+  %(prog)s --noise-type pink
 
-  # Generate music noise (frequency-dependent crest factors), requires Music-Noise_96kHz.wav to derive amplitude spectrum
-  %(prog)s --noise-type external --external-wav Music-Noise_96kHz.wav --crest-mode music
+  # Generate music noise (frequency-dependent crest factors) and ~11 seconds run time (SLOW!! Will take hours to complete)
+  # requires Music-Noise_96kHz.wav to derive amplitude spectrum
+  %(prog)s --noise-type external-ampl-target --external-ampl-wav Music-Noise_96kHz.wav --crest-targets music
+
+  # Generate pink noise with consistent crest factors (absolute level not controlled, just consistency)
+  # Will take around an hour to complete
+  %(prog)s --noise-type pink --objective-mode consistent
+
+  # Generate pink noise with only broadband crest factor control and small number of samples, very quick
+  %(prog)s --noise-type pink --objective-mode broadband-only --num-samples 32768
         """,
     )
 
@@ -436,17 +500,17 @@ Examples:
             "speech",
             "pink_a_weighted",
             "brown",
-            "external",
+            "external-ampl-target",
         ],
         help="Type of noise spectrum to generate",
         required=True,
     )
 
     parser.add_argument(
-        "--crest-mode",
+        "--crest-targets",
         choices=["uniform", "music", "external-file"],
         default="uniform",
-        help="Crest factor mode: uniform (same for all bands), music (frequency-dependent), or external-file (not yet supported)",
+        help="Crest factor target mode: uniform (same for all bands), music (frequency-dependent), or external-file (not yet supported)",
     )
 
     parser.add_argument(
@@ -460,19 +524,19 @@ Examples:
         "--uniform-crest-factor",
         type=float,
         default=12.0,
-        help='Target crest factor in dB (used when crest-mode is "uniform", default: 12.0)',
+        help='Target crest factor in dB (used when crest-targets is "uniform", default: 12.0)',
     )
 
     parser.add_argument(
-        "--external-wav",
+        "--external-ampl-wav",
         type=str,
-        help='Path to external WAV file for amplitude spectrum (required when noise_type is "external")',
+        help='Path to external WAV file for amplitude spectrum (required when noise_type is "external-ampl-target")',
     )
 
     parser.add_argument(
         "--crest-file",
         type=str,
-        help='Path to external crest factor file (required when crest-mode is "external-file", NOT YET SUPPORTED)',
+        help='Path to external crest factor file (required when crest-targets is "external-file", NOT YET SUPPORTED)',
     )
 
     parser.add_argument(
@@ -506,8 +570,7 @@ Examples:
     parser.add_argument(
         "--starting-point",
         type=str,
-        default="starting_point.wav",
-        help="Path to WAV file for initial phases (default: starting_point.wav if it exists)",
+        help="Path to WAV file for initial phases",
     )
 
     parser.add_argument(
@@ -525,27 +588,38 @@ Examples:
     )
 
     parser.add_argument(
+        "--objective-mode",
+        choices=["target", "consistent", "broadband-only"],
+        default="target",
+        help="Objective function mode: target (match frequency-dependent crest factors), consistent (minimize stddev of crest factors), broadband-only (optimize only broadband crest factor)",
+    )
+
+    parser.add_argument(
         "--no-plot", action="store_true", help="Disable plotting of results"
     )
 
     args = parser.parse_args()
 
-    # Validation
-    if args.noise_type == "external" and args.external_wav is None:
-        parser.error("--external-wav is required when noise_type is 'external'")
+    # Some validation
+    if args.noise_type == "external-ampl-target" and args.external_ampl_wav is None:
+        parser.error(
+            "--external-ampl-wav is required when noise_type is 'external-ampl-target'"
+        )
 
-    if args.crest_mode == "uniform":
+    if args.crest_targets == "uniform":
         if args.uniform_crest_factor is None:
             parser.error(
-                "--uniform-crest-factor is required when crest-mode is 'uniform'"
+                "--uniform-crest-factor is required when crest-targets is 'uniform'"
             )
         if args.uniform_crest_factor <= 0:
             parser.error("--uniform-crest-factor must be positive")
 
-    if args.crest_mode == "external-file":
+    if args.crest_targets == "external-file":
         if args.crest_file is None:
-            parser.error("--crest-file is required when crest-mode is 'external-file'")
-        parser.error("crest-mode 'external-file' is not yet supported")
+            parser.error(
+                "--crest-file is required when crest-targets is 'external-file'"
+            )
+        parser.error("crest-targets 'external-file' is not yet supported")
 
     if args.crest_filter_type == "iir":
         parser.error("crest-filter-type 'iir' is not yet supported")
@@ -567,20 +641,20 @@ Examples:
 
 def get_crest_factor_targets(args, octave_freqs, third_octave_freqs, tf_oct_freqs):
     """Get crest factor targets based on the crest mode."""
-    if args.crest_mode == "uniform":
+    if args.crest_targets == "uniform":
         broadband_crest = args.uniform_crest_factor
         octave_crests = generate_uniform_crests(octave_freqs, args.uniform_crest_factor)
         third_octave_crests = generate_uniform_crests(
             third_octave_freqs, args.uniform_crest_factor
         )
         tf_oct_crests = generate_uniform_crests(tf_oct_freqs, args.uniform_crest_factor)
-    elif args.crest_mode == "music":
+    elif args.crest_targets == "music":
         broadband_crest = generate_music_noise_crests(None)
         octave_crests = generate_music_noise_crests(octave_freqs)
         third_octave_crests = generate_music_noise_crests(third_octave_freqs)
         tf_oct_crests = generate_music_noise_crests(tf_oct_freqs)
     else:
-        raise ValueError(f"Unsupported crest mode: {args.crest_mode}")
+        raise ValueError(f"Unsupported crest mode: {args.crest_targets}")
 
     return np.concatenate(
         [[broadband_crest], octave_crests, third_octave_crests, tf_oct_crests]
@@ -599,8 +673,8 @@ def get_amplitudes(args, freqs):
         return generate_pink_a_weighted_amplitudes(freqs)
     elif args.noise_type == "brown":
         return generate_brown_amplitudes(freqs)
-    elif args.noise_type == "external":
-        return generate_amplitudes_like(freqs, args.external_wav)
+    elif args.noise_type == "external-ampl-target":
+        return generate_amplitudes_like(freqs, args.external_ampl_wav)
     else:
         raise ValueError(f"Unknown noise type: {args.noise_type}")
 
@@ -610,12 +684,24 @@ def get_output_prefix(args):
     if args.output_prefix is not None:
         return args.output_prefix
 
-    if args.crest_mode == "uniform":
-        return f"{args.noise_type}_uniform_{args.uniform_crest_factor:.1f}dB"
-    elif args.crest_mode == "music":
-        return f"{args.noise_type}_music_noise"
+    if args.objective_mode == "target":
+        if args.crest_targets == "uniform":
+            return f"{args.noise_type}_crest_target_uniform_{args.uniform_crest_factor:.1f}dB"
+        elif args.crest_targets == "music":
+            return f"{args.noise_type}_crest_target_music"
+        elif args.crest_targets == "external-file":
+            return f"{args.noise_type}_crest_target_external"
+
+    elif args.objective_mode == "consistent":
+        return f"{args.noise_type}_crest_consistent"
+
+    elif args.objective_mode == "broadband-only":
+        return (
+            f"{args.noise_type}_crest_broadband_only_{args.uniform_crest_factor:.1f}dB"
+        )
+
     else:
-        return f"{args.noise_type}_{args.crest_mode}"
+        raise ValueError(f"Unknown objective mode: {args.objective_mode}")
 
 
 def main():
@@ -633,18 +719,19 @@ def main():
     print(f"\n{'='*60}")
     print(f"Advanced Arbitrary Crest Noise Generator")
     print(f"{'='*60}")
+    print(
+        f"Objective Mode: {friendly_objective_names.get(args.objective_mode, args.objective_mode)}"
+    )
     print(f"Noise Type: {friendly_noise_names.get(args.noise_type, args.noise_type)}")
-    if args.noise_type == "external":
-        print(f"External WAV: {args.external_wav}")
+    if args.noise_type == "external-ampl-target":
+        print(f"External Amplitude Target WAV: {args.external_ampl_wav}")
 
     print(
-        f"Crest Mode: {friendly_crest_mode_names.get(args.crest_mode, args.crest_mode)}"
+        f"Crest Targets: {friendly_crest_targets_names.get(args.crest_targets, args.crest_targets)}"
     )
-    if args.crest_mode == "uniform":
-        print(f"Target Crest Factor: {args.uniform_crest_factor:.1f} dB (uniform)")
-    if args.crest_mode == "music":
-        print(f"Target Crest Factors: Music-Noise inspired (frequency-dependent)")
-    if args.crest_mode == "external-file":
+    if args.crest_targets == "uniform":
+        print(f"Target Crest Factors: {args.uniform_crest_factor:.1f} dB (uniform)")
+    if args.crest_targets == "external-file":
         print(f"Target Crest Factors: From External file {args.crest_file}")
 
     print(f"{'='*60}\n")
@@ -769,17 +856,54 @@ def main():
     target_crest_weightings = np.ones((num_filters,), dtype=np.float32)
     target_crest_weightings[0] = args.broadband_weight
 
-    opt_fun_jit = jax.jit(
-        partial(
-            noise_signal_obj_filter,
-            amplitudes=amplitudes,
-            num_phases_lf_pad=num_phases_lf_pad,
-            num_phases_hf_pad=num_phases_hf_pad,
-            filters=filters,
-            target_crests=target_crests,
-            target_crest_weightings=target_crest_weightings,
+    opt_fun_jit = None
+
+    if args.objective_mode == "target":
+        print("Using target crest factor optimization mode.")
+
+        opt_fun_jit = jax.jit(
+            partial(
+                noise_signal_objective_multi_filter_target,
+                amplitudes=amplitudes,
+                num_phases_lf_pad=num_phases_lf_pad,
+                num_phases_hf_pad=num_phases_hf_pad,
+                filters=filters,
+                target_crests=target_crests,
+                target_crest_weightings=target_crest_weightings,
+            )
         )
-    )
+    elif args.objective_mode == "consistent":
+        print(
+            "Using consistent crest factor optimization mode (only stddev of crests)!!"
+        )
+
+        opt_fun_jit = jax.jit(
+            partial(
+                noise_signal_objective_multi_filter_consistent,
+                amplitudes=amplitudes,
+                num_phases_lf_pad=num_phases_lf_pad,
+                num_phases_hf_pad=num_phases_hf_pad,
+                filters=filters,
+            )
+        )
+    elif args.objective_mode == "broadband-only":
+        print(
+            "Using broadband-only optimization (no frequency-dependent crest factors)!!"
+        )
+
+        opt_fun_jit = jax.jit(
+            partial(
+                noise_signal_objective_single_broadband,
+                amplitudes=amplitudes,
+                num_phases_lf_pad=num_phases_lf_pad,
+                num_phases_hf_pad=num_phases_hf_pad,
+                target_broadband_crest=target_crests[0],
+            )
+        )
+
+    else:
+        raise ValueError(f"Unknown objective mode: {args.objective_mode}")
+
     opt_grad_fun_jit = jax.jit(jax.grad(opt_fun_jit))
 
     best_solution = base_phases.copy()
@@ -828,13 +952,6 @@ def main():
     print(f"Signal length {nSamples / sample_rate}s (Number of Samples: {nSamples})")
     print(f"Num Frequencies: {num_freqs}")
     print(f"Num Filters: {num_filters}")
-    if args.crest_mode == "music":
-        print(f"Broadband target crest: {target_crests[0]:.2f}dB")
-        print(
-            f"Band target crest range: {target_crests[1:].min():.2f}dB - {target_crests[1:].max():.2f}dB"
-        )
-    else:
-        print(f"Target crest factor: {args.uniform_crest_factor:.2f}dB (uniform)")
     sys.stdout.flush()
 
     x0 = base_phases
@@ -880,7 +997,7 @@ def main():
     print(f"=========================================")
     print(f"Noise Type: {friendly_noise_names.get(args.noise_type, args.noise_type)}")
     print(
-        f"Crest Mode: {friendly_crest_mode_names.get(args.crest_mode, args.crest_mode)}"
+        f"Crest Mode: {friendly_crest_targets_names.get(args.crest_targets, args.crest_targets)}"
     )
     print(
         f"Optimized {num_freqs} frequencies, reduced to {num_phases_to_optimize} phases"
