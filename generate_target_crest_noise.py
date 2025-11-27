@@ -1,5 +1,27 @@
 #!/usr/bin/env python3
-import os
+
+"""
+Semi-Advanced Noise Generator
+
+This tool was the first step in the evolution of the consistent crest noise generator.
+
+There is no guarantee that the script will be able to achieve the desired crest factor.
+
+The script uses the numeric steam hammer, aka gradient-free optimization. First, the desired amplitude spectrum is generated, then the gradient-free optimization changes the phase spectrum to achieve the desired crest factor.
+
+Because COBYLA is by far the best performing algorithm I tested, but limited to 32bit (~35k parameters), the script has a separate internal sample rate and target sample rate.
+
+The internal sample rate is the space over which the optimization is performed. Sadly, when resampling a signal to a higher sample rate, the crest factor will change.
+
+Therefore, during the optimization process, the following steps are performed:
+1. Generate the desired amplitude spectrum for internal sample rate
+2. Generate an initial phase spectrum
+3. Synthesize the noise signal with the current phase spectrum
+4. Resample the noise signal to the target sample rate
+5. Calculate the crest factor of the resampled signal
+6. If the crest factor is not within the desired range, adjust the phase spectrum and repeat
+"""
+
 import numpy as np
 import scipy.signal as signal
 import scipy.optimize as optimize
