@@ -1,16 +1,24 @@
 #!/bin/env python3
 
 """
-Advanced Consistent Crest Noise Generator
+Advanced Arbitrary Crest Noise Generator
 
-This tool generates noise signals with consistent crest factors across multiple
-frequency bands simultaneously.
+!!WARNING!!
+This is research code, here be dragons!
+Convergence is NOT guaranteed
+Assume everything is evil and wants to eat your cats and dogs
+!!WARNING!!
+
+Contrary to the name ("Consistent Crest Noise Generator"), this tool allows specifying arbitrary
+frequency-dependent crest factor targets simultaneously across multiple frequency bands.
+
+Those CAN all be identical (consistent crest factors), but they do not have to be (Music Noise)
 
 The script uses gradient-based optimization with JAX for automatic differentiation.
 
 Unlike simpler noise generators that only target a single broadband crest factor,
 this generator optimizes the phase spectrum to achieve specific crest factors in
-octave bands, third-octave bands, and 1/24-octave bands simultaneously.
+octave bands, third-octave bands, and 1/24-octave bands ALL AT THE SAME TIME.
 
 The optimization process works as follows:
 1. Generate the desired amplitude spectrum (from file or analytical function)
